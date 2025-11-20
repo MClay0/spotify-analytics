@@ -1,6 +1,6 @@
 # Spotify Analytics
 
-A Python script that analyzes Mt. Joy using the Spotify Web API and discovers new music. The script retrieves band statistics, their latest album details, finds popular artists from new releases, and randomly selects one for detailed analysis.
+A web application that analyzes Mt. Joy using the Spotify Web API and discovers new music. The app retrieves band statistics, their latest album details, finds popular artists from new releases, and randomly selects one for detailed analysis.
 
 ## Setup
 
@@ -15,22 +15,36 @@ A Python script that analyzes Mt. Joy using the Spotify Web API and discovers ne
    - Fill in the app name and description
    - Note down your Client ID and Client Secret
 
-3. **Set up credentials (choose one option):**
+## Running the Application
 
-   **Option A: Environment file (recommended)**
+### Option 1: Web Interface (Recommended)
+
+1. **Start the Flask server:**
+   ```bash
+   python app.py
+   ```
+
+2. **Open in your browser:**
+   - Navigate to: `http://localhost:5000`
+   - Enter your Spotify Client ID and Client Secret in the web form
+   - Click "Get Analytics" to view the results
+
+3. **Stop the server:**
+   - Press `Ctrl+C` in the terminal
+
+### Option 2: Command Line Script
+
+1. **Set up credentials:**
    ```bash
    # Copy the example file
    cp .env.example .env
-   
+
    # Edit .env and add your credentials
    SPOTIFY_CLIENT_ID=your_actual_client_id
    SPOTIFY_CLIENT_SECRET=your_actual_client_secret
    ```
 
-   **Option B: Manual input**
-   - Just run the script and it will prompt you for credentials
-
-4. **Run the script:**
+2. **Run the script:**
    ```bash
    python driver.py
    ```

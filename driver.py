@@ -93,7 +93,7 @@ def main():
     # 4. Random artist info
     print(f"\n4. Random Artist Details:")
     random_artist = random.choice(popular_artists)
-    print(f"   🎲 {random_artist['name']}")
+    print(f"  {random_artist['name']}")
     
     artist_info = make_spotify_request(f"/artists/{random_artist['id']}", access_token)
     print(f"   Followers: {artist_info['followers']['total']:,}")

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Analytics - Mt. Joy</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Spotify Analytics</h1>
+            <p class="subtitle">Discover Mt. Joy & New Music</p>
+        </header>
+
+        <div class="credentials-section" id="credentialsSection">
+            <div class="card">
+                <h2>Enter Spotify Credentials</h2>
+                <p class="info-text">Get your credentials from the <a href="https://developer.spotify.com/dashboard" target="_blank">Spotify Developer Dashboard</a></p>
+                <form id="credentialsForm">
+                    <div class="form-group">
+                        <label for="clientId">Client ID</label>
+                        <input type="text" id="clientId" placeholder="Enter your Client ID" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="clientSecret">Client Secret</label>
+                        <input type="password" id="clientSecret" placeholder="Enter your Client Secret" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <span class="btn-text">Get Analytics</span>
+                        <span class="loader" style="display: none;"></span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <button class="btn btn-secondary" id="resetBtn">Enter New Credentials</button>
+
+            <div class="grid">
+                <div class="card">
+                    <h2>Mt. Joy Stats</h2>
+                    <div id="mtJoyStats" class="stats-container"></div>
+                </div>
+
+                <div class="card">
+                    <h2>Latest Album</h2>
+                    <div id="latestAlbum" class="album-container"></div>
+                </div>
+
+                <div class="card">
+                    <h2>Popular Artists</h2>
+                    <div id="popularArtists" class="artists-list"></div>
+                </div>
+
+                <div class="card">
+                    <h2>Random Artist Discovery</h2>
+                    <div id="randomArtist" class="artist-details"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="error-section" id="errorSection" style="display: none;">
+            <div class="error-card">
+                <h3>Error</h3>
+                <p id="errorMessage"></p>
+                <button class="btn btn-secondary" id="retryBtn">Try Again</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
