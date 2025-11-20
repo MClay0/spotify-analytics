@@ -1,109 +1,136 @@
+"""
+Mt. Joy Spotify Analytics CLI
+
+A command-line tool to display analytics and information about Mt. Joy
+and other popular artists using the Spotify Web API.
+"""
+
 import os
-import base64
 import random
-import requests
+from typing import Tuple, List, Dict
 from dotenv import load_dotenv
+from spotify_client import SpotifyClient, Artist
 
 load_dotenv()
 
-def setup_spotify_credentials():
+
+def setup_spotify_credentials() -> Tuple[str, str]:
+    """
+    Get Spotify API credentials from environment or user input.
+
+    Returns:
+        Tuple containing (client_id, client_secret)
+    """
     client_id = os.getenv('SPOTIFY_CLIENT_ID')
     client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
-    
+
     if client_id and client_secret:
         return client_id, client_secret
-    
+
     client_id = input("Enter your Spotify Client ID: ").strip()
     client_secret = input("Enter your Spotify Client Secret: ").strip()
     return client_id, client_secret
-def get_access_token(client_id, client_secret):
-    credentials = f"{client_id}:{client_secret}"
-    encoded_credentials = base64.b64encode(credentials.encode()).decode()
-    
-    url = "https://accounts.spotify.com/api/token"
-    headers = {
-        "Authorization": f"Basic {encoded_credentials}",
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
-    data = {"grant_type": "client_credentials"}
-    
-    response = requests.post(url, headers=headers, data=data)
-    return response.json()["access_token"]
 
-def make_spotify_request(endpoint, access_token):
-    url = f"https://api.spotify.com/v1{endpoint}"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.get(url, headers=headers)
-    return response.json() if response.status_code == 200 else {}
 
-def main():
+def extract_popular_artists(new_releases: List[Dict], exclude_name: str = 'Mt. Joy', limit: int = 10) -> List[Dict[str, str]]:
+    """
+    Extract unique popular artists from new releases.
+
+    Args:
+        new_releases: List of album data from Spotify's new releases
+        exclude_name: Artist name to exclude from results (default: 'Mt. Joy')
+        limit: Maximum number of artists to return
+
+    Returns:
+        List of dictionaries containing artist name and ID
+    """
+    popular_artists = []
+    seen_names = set()
+
+    for album in new_releases:
+        for artist in album.get('artists', []):
+            artist_name = artist['name']
+            if artist_name != exclude_name and artist_name not in seen_names:
+                popular_artists.append({'name': artist_name, 'id': artist['id']})
+                seen_names.add(artist_name)
+                if len(popular_artists) >= limit:
+                    return popular_artists
+
+    return popular_artists
+
+
+def main() -> None:
+    """Main entry point for the Mt. Joy analytics CLI."""
+    # Initialize Spotify client
     client_id, client_secret = setup_spotify_credentials()
-    access_token = get_access_token(client_id, client_secret)
-    
+    client = SpotifyClient(client_id, client_secret)
+
+    # Authenticate with Spotify API
+    if not client.authenticate():
+        print("Error: Failed to authenticate with Spotify API")
+        return
+
     print("MT. JOY ANALYTICS")
     print("=" * 40)
 
     # 1. Get Mt. Joy stats
     print("\n1. Mt. Joy Stats:")
-    search_results = make_spotify_request("/search?q=Mt%20Joy&type=artist&limit=1", access_token)
-    artist = search_results['artists']['items'][0]
-    mt_joy_id = artist['id']
-    
-    print(f"   {artist['name']}")
-    print(f"   Followers: {artist['followers']['total']:,}")
-    print(f"   Popularity: {artist['popularity']}/100")
-    
-    # Top tracks
-    top_tracks = make_spotify_request(f"/artists/{mt_joy_id}/top-tracks?market=US", access_token)
+    mt_joy = client.search_artist("Mt Joy")
+
+    if not mt_joy:
+        print("Error: Could not find Mt. Joy")
+        return
+
+    print(f"   {mt_joy.name}")
+    print(f"   Followers: {mt_joy.followers:,}")
+    print(f"   Popularity: {mt_joy.popularity}/100")
+
+    # Display top tracks
+    top_tracks = client.get_artist_top_tracks(mt_joy.id)
     print(f"\n   Top Tracks:")
-    for i, track in enumerate(top_tracks['tracks'][:5], 1):
-        print(f"     {i}. {track['name']}")
+    for i, track in enumerate(top_tracks[:5], 1):
+        print(f"     {i}. {track.name}")
 
     # 2. Latest album
     print(f"\n2. Latest Album:")
-    albums = make_spotify_request(f"/artists/{mt_joy_id}/albums?include_groups=album&market=US&limit=1", access_token)
-    latest_album = albums['items'][0]
-    print(f"   {latest_album['name']} ({latest_album.get('release_date', 'Unknown')})")
-    
-    # Album tracks
-    album_tracks = make_spotify_request(f"/albums/{latest_album['id']}/tracks?limit=5", access_token)
-    for i, track in enumerate(album_tracks['items'], 1):
-        duration_min = track['duration_ms'] // 60000
-        duration_sec = (track['duration_ms'] % 60000) // 1000
-        print(f"     {i}. {track['name']} ({duration_min}:{duration_sec:02d})")
+    albums = client.get_artist_albums(mt_joy.id)
+
+    if albums:
+        latest_album = albums[0]
+        print(f"   {latest_album.name} ({latest_album.release_date})")
+
+        # Display album tracks
+        album_tracks = client.get_album_tracks(latest_album.id, limit=5)
+        for i, track in enumerate(album_tracks, 1):
+            print(f"     {i}. {track.name} ({track.duration_formatted})")
 
     # 3. Get popular artists from new releases
     print(f"\n3. Finding Popular Artists:")
-    new_releases = make_spotify_request("/browse/new-releases?limit=20", access_token)
-    popular_artists = []
-    
-    if 'albums' in new_releases:
-        for album in new_releases['albums']['items']:
-            for artist in album['artists']:
-                if artist['name'] != 'Mt. Joy' and artist['name'] not in [a['name'] for a in popular_artists]:
-                    popular_artists.append({'name': artist['name'], 'id': artist['id']})
-                if len(popular_artists) >= 10:
-                    break
-            if len(popular_artists) >= 10:
-                break
+    new_releases = client.get_new_releases(limit=20)
+    popular_artists = extract_popular_artists(new_releases, exclude_name='Mt. Joy', limit=10)
 
     for i, artist in enumerate(popular_artists, 1):
         print(f"     {i}. {artist['name']}")
 
     # 4. Random artist info
-    print(f"\n4. Random Artist Details:")
-    random_artist = random.choice(popular_artists)
-    print(f"  {random_artist['name']}")
-    
-    artist_info = make_spotify_request(f"/artists/{random_artist['id']}", access_token)
-    print(f"   Followers: {artist_info['followers']['total']:,}")
-    print(f"   Popularity: {artist_info['popularity']}/100")
-    
-    top_tracks = make_spotify_request(f"/artists/{random_artist['id']}/top-tracks?market=US", access_token)
-    print(f"   Top tracks:")
-    for i, track in enumerate(top_tracks['tracks'][:3], 1):
-        print(f"     {i}. {track['name']}")
-    
+    if popular_artists:
+        print(f"\n4. Random Artist Details:")
+        random_artist_data = random.choice(popular_artists)
+        print(f"  {random_artist_data['name']}")
+
+        # Fetch detailed artist information
+        random_artist = client.get_artist(random_artist_data['id'])
+
+        if random_artist:
+            print(f"   Followers: {random_artist.followers:,}")
+            print(f"   Popularity: {random_artist.popularity}/100")
+
+            # Display top tracks for the random artist
+            random_top_tracks = client.get_artist_top_tracks(random_artist_data['id'])
+            print(f"   Top tracks:")
+            for i, track in enumerate(random_top_tracks[:3], 1):
+                print(f"     {i}. {track.name}")
+
     print("\n" + "=" * 40)
 
 if __name__ == "__main__":
