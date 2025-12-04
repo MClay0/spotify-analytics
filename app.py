@@ -1,13 +1,16 @@
-"""
-Mt. Joy Spotify Analytics Flask API
+print(">>> RUNNING CLEAN FINAL APP.PY <<<")
 
-A Flask web application that provides a REST API for retrieving
-Mt. Joy analytics and information about popular artists.
+"""
+Spotify Artist Analytics Flask API
+
+A Flask web application that provides analytics for any artist using
+the Spotify Web API, including artist info, top tracks, latest album,
+popular artists, random trending artists, and related artists.
 """
 
 import os
 import random
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -19,128 +22,148 @@ app = Flask(__name__)
 CORS(app)
 
 
-def extract_popular_artists_from_releases(new_releases: List[Dict[str, Any]], exclude_name: str = 'Mt. Joy', limit: int = 10) -> List[Dict[str, str]]:
-    """
-    Extract unique popular artists from new releases.
-
-    Args:
-        new_releases: List of album data from Spotify's new releases
-        exclude_name: Artist name to exclude from results
-        limit: Maximum number of artists to return
-
-    Returns:
-        List of dictionaries containing artist name and ID
-    """
-    popular_artists = []
-    seen_names = set()
+# ---------------------------------------------------------
+# Extract popular artists from new releases
+# ---------------------------------------------------------
+def extract_popular_artists_from_releases(
+    new_releases: List[Dict[str, Any]], exclude_name: str = "", limit: int = 10
+) -> List[Dict[str, str]]:
+    popular = []
+    seen = set()
 
     for album in new_releases:
-        for artist_item in album.get('artists', []):
-            artist_name = artist_item['name']
-            if artist_name != exclude_name and artist_name not in seen_names:
-                popular_artists.append({'name': artist_name, 'id': artist_item['id']})
-                seen_names.add(artist_name)
-                if len(popular_artists) >= limit:
-                    return popular_artists
+        for a in album.get("artists", []):
+            name = a["name"]
+            if name != exclude_name and name not in seen:
+                popular.append({"name": name, "id": a["id"]})
+                seen.add(name)
+                if len(popular) >= limit:
+                    return popular
 
-    return popular_artists
-
-
-@app.route('/')
-def index() -> str:
-    """Render the main HTML page."""
-    return render_template('index.html')
+    return popular
 
 
-@app.route('/api/analytics', methods=['POST'])
-def get_analytics() -> tuple:
-    """
-    API endpoint to retrieve Mt. Joy analytics and popular artists.
+# ---------------------------------------------------------
+# Main Page (with optional pre-filled credentials)
+# ---------------------------------------------------------
+@app.route("/")
+def index():
+    return render_template(
+        "index.html",
+        default_client_id=os.getenv("SPOTIFY_CLIENT_ID", ""),
+        default_client_secret=os.getenv("SPOTIFY_CLIENT_SECRET", "")
+    )
 
-    Expects JSON payload with optional client_id and client_secret.
-    Falls back to environment variables if not provided.
 
-    Returns:
-        JSON response with analytics data or error message
-    """
+# ---------------------------------------------------------
+# Main Analytics Endpoint
+# ---------------------------------------------------------
+@app.route("/api/analytics", methods=["POST"])
+def get_analytics():
     data = request.json
-    client_id = data.get('client_id') or os.getenv('SPOTIFY_CLIENT_ID')
-    client_secret = data.get('client_secret') or os.getenv('SPOTIFY_CLIENT_SECRET')
 
-    # Validate credentials are provided
+    artist_name = data.get("artist_name")
+    if not artist_name:
+        return jsonify({"error": "Artist name is required"}), 400
+
+    # Credentials: user input > env
+    client_id = data.get("client_id") or os.getenv("SPOTIFY_CLIENT_ID")
+    client_secret = data.get("client_secret") or os.getenv("SPOTIFY_CLIENT_SECRET")
+
     if not client_id or not client_secret:
-        return jsonify({'error': 'Missing credentials'}), 400
+        return jsonify({"error": "Missing Spotify API credentials"}), 400
 
     try:
-        # Initialize and authenticate Spotify client
+        # Authenticate
         client = SpotifyClient(client_id, client_secret)
         if not client.authenticate():
-            return jsonify({'error': 'Invalid credentials'}), 401
+            return jsonify({"error": "Invalid Spotify credentials"}), 401
 
-        # Get Mt. Joy artist information
-        mt_joy = client.search_artist("Mt Joy")
-        if not mt_joy:
-            return jsonify({'error': 'Could not find Mt. Joy'}), 404
+        # -------------------------
+        # Artist Info
+        # -------------------------
+        artist = client.search_artist(artist_name)
+        if not artist:
+            return jsonify({"error": f'Artist "{artist_name}" not found'}), 404
 
-        # Get Mt. Joy top tracks
-        top_tracks = client.get_artist_top_tracks(mt_joy.id)
+        # -------------------------
+        # Top Tracks (no audio stats since Spotify removed features API)
+        # -------------------------
+        top_tracks = client.get_artist_top_tracks(artist.id)
+        top_tracks_list = [
+            {
+                "name": t.name,
+                "duration": t.duration_formatted
+            }
+            for t in top_tracks[:5]
+        ]
 
-        # Get latest album
-        albums = client.get_artist_albums(mt_joy.id)
+        # -------------------------
+        # Latest Album
+        # -------------------------
+        albums = client.get_artist_albums(artist.id, limit=1)
         if not albums:
-            return jsonify({'error': 'Could not find albums'}), 404
+            return jsonify({"error": "This artist has no albums"}), 404
 
         latest_album = albums[0]
         album_tracks = client.get_album_tracks(latest_album.id, limit=5)
 
-        # Get popular artists from new releases
+        # -------------------------
+        # Popular Artists (based on New Releases)
+        # -------------------------
         new_releases = client.get_new_releases(limit=20)
-        popular_artists = extract_popular_artists_from_releases(new_releases, exclude_name='Mt. Joy', limit=10)
+        popular_artists = extract_popular_artists_from_releases(
+            new_releases, exclude_name=artist.name
+        )
 
-        # Select and get details for a random artist
-        random_artist_details: Optional[Dict[str, Any]] = None
+        # -------------------------
+        # Random Trending Artist
+        # -------------------------
+        random_artist = None
         if popular_artists:
-            random_artist_data = random.choice(popular_artists)
-            random_artist = client.get_artist(random_artist_data['id'])
-
-            if random_artist:
-                random_top_tracks = client.get_artist_top_tracks(random_artist.id)
-                random_artist_details = {
-                    'name': random_artist.name,
-                    'followers': random_artist.followers,
-                    'popularity': random_artist.popularity,
-                    'top_tracks': [track.name for track in random_top_tracks[:3]],
-                    'image': random_artist.image_url
+            choice = random.choice(popular_artists)
+            rand = client.get_artist(choice["id"])
+            if rand:
+                rand_top = client.get_artist_top_tracks(rand.id)
+                random_artist = {
+                    "name": rand.name,
+                    "followers": rand.followers,
+                    "popularity": rand.popularity,
+                    "image": rand.image_url,
+                    "top_tracks": [t.name for t in rand_top[:3]]
                 }
 
-        # Build response JSON
+        # -------------------------
+        # Final JSON
+        # -------------------------
         return jsonify({
-            'mt_joy': {
-                'name': mt_joy.name,
-                'followers': mt_joy.followers,
-                'popularity': mt_joy.popularity,
-                'top_tracks': [track.name for track in top_tracks[:5]],
-                'image': mt_joy.image_url
+            "artist": {
+                "name": artist.name,
+                "followers": artist.followers,
+                "popularity": artist.popularity,
+                "image": artist.image_url,
+                "genres": artist.genres or []
             },
-            'latest_album': {
-                'name': latest_album.name,
-                'release_date': latest_album.release_date,
-                'image': latest_album.image_url,
-                'tracks': [
-                    {
-                        'name': track.name,
-                        'duration': track.duration_formatted
-                    }
-                    for track in album_tracks
+            "top_tracks": top_tracks_list,
+            "latest_album": {
+                "name": latest_album.name,
+                "release_date": latest_album.release_date,
+                "image": latest_album.image_url,
+                "tracks": [
+                    {"name": t.name, "duration": t.duration_formatted}
+                    for t in album_tracks
                 ]
             },
-            'popular_artists': [artist['name'] for artist in popular_artists],
-            'random_artist': random_artist_details
+            "popular_artists": [p["name"] for p in popular_artists],
+            "random_artist": random_artist,
         })
 
     except Exception as e:
-        # Handle any unexpected errors
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
-if __name__ == '__main__':
+
+# ---------------------------------------------------------
+# Run Server
+# ---------------------------------------------------------
+if __name__ == "__main__":
     app.run(debug=True, port=5000)

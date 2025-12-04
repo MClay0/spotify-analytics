@@ -13,39 +13,22 @@ from dataclasses import dataclass
 
 @dataclass
 class Artist:
-    """
-    Represents a Spotify artist with their metadata.
-
-    Attributes:
-        id: Spotify artist ID
-        name: Artist name
-        followers: Total number of followers
-        popularity: Popularity score (0-100)
-        image_url: URL to artist's profile image
-    """
     id: str
     name: str
     followers: int
     popularity: int
     image_url: Optional[str] = None
+    genres: Optional[List[str]] = None
 
     @classmethod
     def from_api_response(cls, data: Dict[str, Any]) -> 'Artist':
-        """
-        Create an Artist instance from Spotify API response data.
-
-        Args:
-            data: Raw JSON response from Spotify API
-
-        Returns:
-            Artist instance populated with data from the API response
-        """
         return cls(
             id=data['id'],
             name=data['name'],
             followers=data['followers']['total'],
             popularity=data['popularity'],
-            image_url=data['images'][0]['url'] if data.get('images') else None
+            image_url=data['images'][0]['url'] if data.get('images') else None,
+            genres=data.get('genres', [])
         )
 
 
@@ -100,12 +83,6 @@ class Track:
 
     @property
     def duration_formatted(self) -> str:
-        """
-        Get formatted track duration as MM:SS.
-
-        Returns:
-            Duration string in MM:SS format
-        """
         minutes = self.duration_ms // 60000
         seconds = (self.duration_ms % 60000) // 1000
         return f"{minutes}:{seconds:02d}"
@@ -181,15 +158,6 @@ class SpotifyClient:
             return False
 
     def _make_request(self, endpoint: str) -> Dict[str, Any]:
-        """
-        Make an authenticated request to the Spotify API.
-
-        Args:
-            endpoint: API endpoint path (e.g., "/search?q=artist")
-
-        Returns:
-            JSON response as a dictionary, or empty dict on error
-        """
         if not self.access_token:
             raise ValueError("Client not authenticated. Call authenticate() first.")
 
@@ -203,21 +171,26 @@ class SpotifyClient:
             return {}
 
     def search_artist(self, artist_name: str) -> Optional[Artist]:
-        """
-        Search for an artist by name.
-
-        Args:
-            artist_name: Name of the artist to search for
-
-        Returns:
-            Artist object if found, None otherwise
-        """
-        endpoint = f"/search?q={requests.utils.quote(artist_name)}&type=artist&limit=1"
+        # Search for artist
+        endpoint = (
+            f"/search?q={requests.utils.quote(artist_name)}"
+            f"&type=artist&limit=5"
+        )
         data = self._make_request(endpoint)
 
-        if data.get('artists', {}).get('items'):
-            return Artist.from_api_response(data['artists']['items'][0])
-        return None
+        items = data.get("artists", {}).get("items", [])
+        if not items:
+            return None
+
+        # Strict name matching (case-insensitive)
+        for item in items:
+            if item["name"].lower() == artist_name.lower():
+                return Artist.from_api_response(item)
+
+        # Fallback: return best match (highest popularity)
+        items.sort(key=lambda x: x.get("popularity", 0), reverse=True)
+        return Artist.from_api_response(items[0])
+    
 
     def get_artist(self, artist_id: str) -> Optional[Artist]:
         """
@@ -246,7 +219,7 @@ class SpotifyClient:
         data = self._make_request(f"/artists/{artist_id}/top-tracks?market={market}")
         tracks = data.get('tracks', [])
         return [Track.from_api_response(track) for track in tracks]
-
+    
     def get_artist_albums(
         self,
         artist_id: str,
@@ -298,3 +271,6 @@ class SpotifyClient:
         """
         data = self._make_request(f"/browse/new-releases?limit={limit}")
         return data.get('albums', {}).get('items', [])
+        
+        
+

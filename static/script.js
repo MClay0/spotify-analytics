@@ -1,172 +1,193 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const credentialsForm = document.getElementById('credentialsForm');
-    const credentialsSection = document.getElementById('credentialsSection');
-    const resultsSection = document.getElementById('resultsSection');
-    const errorSection = document.getElementById('errorSection');
-    const resetBtn = document.getElementById('resetBtn');
-    const retryBtn = document.getElementById('retryBtn');
+document.addEventListener("DOMContentLoaded", () => {
+  const credentialsForm = document.getElementById("credentialsForm");
+  const credentialsSection = document.getElementById("credentialsSection");
+  const resultsSection = document.getElementById("resultsSection");
+  const errorSection = document.getElementById("errorSection");
+  const resetBtn = document.getElementById("resetBtn");
+  const retryBtn = document.getElementById("retryBtn");
 
-    credentialsForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+  credentialsForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-        const clientId = document.getElementById('clientId').value.trim();
-        const clientSecret = document.getElementById('clientSecret').value.trim();
+    // const clientId = document.getElementById("clientId").value.trim();
+    // const clientSecret = document.getElementById("clientSecret").value.trim();
+    const clientId = "29d0a164e4914d018d98bf0b2c69ef78";
+    const clientSecret = "c1798841a2d14c4aa2b8de02623bb686";
+    const artistName = document.getElementById("artistName").value.trim();
 
-        if (!clientId || !clientSecret) {
-            showError('Please enter both Client ID and Client Secret');
-            return;
+    if (!clientId || !clientSecret || !artistName) {
+      showError("Please enter Artist Name, Client ID, and Client Secret.");
+      return;
+    }
+
+    await fetchAnalytics(clientId, clientSecret, artistName);
+  });
+
+  resetBtn.addEventListener("click", () => {
+    showCredentialsSection();
+    credentialsForm.reset();
+  });
+
+  retryBtn.addEventListener("click", () => {
+    showCredentialsSection();
+  });
+
+  // --------------------------------------------
+  // FETCH ANALYTICS FROM API
+  // --------------------------------------------
+  async function fetchAnalytics(clientId, clientSecret, artistName) {
+    const submitBtn = credentialsForm.querySelector('button[type="submit"]');
+    const btnText = submitBtn.querySelector(".btn-text");
+    const loader = submitBtn.querySelector(".loader");
+
+    submitBtn.disabled = true;
+    btnText.textContent = "Loading...";
+    loader.style.display = "inline-block";
+
+    try {
+      const response = await fetch("/api/analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artist_name: artistName,
+          client_id: clientId,
+          client_secret: clientSecret,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.error);
+
+      displayResults(data);
+      console.log("FULL JSON RESPONSE:", data);
+
+      showResultsSection();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submitBtn.disabled = false;
+      btnText.textContent = "Get Analytics";
+      loader.style.display = "none";
+    }
+  }
+
+  // --------------------------------------------
+  // DISPLAY RESULTS ON PAGE
+  // --------------------------------------------
+  function displayResults(data) {
+    const artist = data.artist;
+    const mtJoyStats = document.getElementById("mtJoyStats");
+
+    // ---------------- ARTIST MAIN INFO ----------------
+    mtJoyStats.innerHTML = `
+        ${
+          artist.image
+            ? `<div class="artist-header">
+                 <img src="${artist.image}" class="artist-image">
+                 <div class="artist-info"><h3>${artist.name}</h3></div>
+               </div>`
+            : `<h3>${artist.name}</h3>`
         }
 
-        await fetchAnalytics(clientId, clientSecret);
-    });
+        <div class="stat-row"><span class="stat-label">Followers</span>
+          <span class="stat-value">${formatNumber(artist.followers)}</span>
+        </div>
 
-    resetBtn.addEventListener('click', () => {
-        showCredentialsSection();
-        document.getElementById('credentialsForm').reset();
-    });
+        <div class="stat-row"><span class="stat-label">Popularity</span>
+          <span class="stat-value">${artist.popularity}/100</span>
+        </div>        
+    `;
 
-    retryBtn.addEventListener('click', () => {
-        showCredentialsSection();
-    });
+    // ---------------- LATEST ALBUM ----------------
+    const album = data.latest_album;
+    const latestAlbum = document.getElementById("latestAlbum");
 
-    async function fetchAnalytics(clientId, clientSecret) {
-        const submitBtn = credentialsForm.querySelector('button[type="submit"]');
-        const btnText = submitBtn.querySelector('.btn-text');
-        const loader = submitBtn.querySelector('.loader');
-
-        // Show loading state
-        submitBtn.disabled = true;
-        btnText.textContent = 'Loading...';
-        loader.style.display = 'inline-block';
-
-        try {
-            const response = await fetch('/api/analytics', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    client_id: clientId,
-                    client_secret: clientSecret
-                })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to fetch analytics');
+    latestAlbum.innerHTML = `
+        <div class="album-header">
+            ${
+              album.image
+                ? `<img src="${album.image}" class="album-image">`
+                : ""
             }
+            <div class="album-info">
+                <h3>${album.name}</h3>
+                <p class="album-date">${album.release_date}</p>
+            </div>
+        </div>
 
-            displayResults(data);
-            showResultsSection();
+        <h4>Tracks</h4>
+        <ul class="track-list">
+            ${album.tracks
+              .map(
+                (t) =>
+                  `<li>${t.name} <span style="color:#999">(${t.duration})</span></li>`
+              )
+              .join("")}
+        </ul>
+    `;
 
-        } catch (error) {
-            showError(error.message);
-        } finally {
-            submitBtn.disabled = false;
-            btnText.textContent = 'Get Analytics';
-            loader.style.display = 'none';
+    // ---------------- POPULAR ARTISTS ----------------
+    const popularArtists = document.getElementById("popularArtists");
+    popularArtists.innerHTML = data.popular_artists
+      .map((a) => `<span class="artist-tag">${a}</span>`)
+      .join("");
+
+    // ---------------- RANDOM ARTIST ----------------
+    const randomArtist = document.getElementById("randomArtist");
+    const rand = data.random_artist;
+
+    if (!rand) {
+      randomArtist.innerHTML = "<p>No random artist available.</p>";
+      return;
+    }
+
+    randomArtist.innerHTML = `
+        ${
+          rand.image
+            ? `<img src="${rand.image}" class="artist-image" style="margin-bottom:20px;">`
+            : ""
         }
-    }
+        <h3>${rand.name}</h3>
 
-    function displayResults(data) {
-        // Display Mt. Joy Stats
-        const mtJoyStats = document.getElementById('mtJoyStats');
-        mtJoyStats.innerHTML = `
-            ${data.mt_joy.image ? `
-                <div class="artist-header">
-                    <img src="${data.mt_joy.image}" alt="${data.mt_joy.name}" class="artist-image">
-                    <div class="artist-info">
-                        <h3>${data.mt_joy.name}</h3>
-                    </div>
-                </div>
-            ` : `<h3>${data.mt_joy.name}</h3>`}
-            <div class="stat-row">
-                <span class="stat-label">Followers</span>
-                <span class="stat-value">${formatNumber(data.mt_joy.followers)}</span>
-            </div>
-            <div class="stat-row">
-                <span class="stat-label">Popularity</span>
-                <span class="stat-value">${data.mt_joy.popularity}/100</span>
-            </div>
-            <h4 style="margin: 20px 0 10px 0; color: #666;">Top Tracks</h4>
-            <ul class="track-list">
-                ${data.mt_joy.top_tracks.map(track => `<li>${track}</li>`).join('')}
-            </ul>
-        `;
+        <div class="stat-row"><span class="stat-label">Followers</span>
+          <span class="stat-value">${formatNumber(rand.followers)}</span>
+        </div>
 
-        // Display Latest Album
-        const latestAlbum = document.getElementById('latestAlbum');
-        latestAlbum.innerHTML = `
-            <div class="album-header">
-                ${data.latest_album.image ? `
-                    <img src="${data.latest_album.image}" alt="${data.latest_album.name}" class="album-image">
-                ` : ''}
-                <div class="album-info">
-                    <h3>${data.latest_album.name}</h3>
-                    <p class="album-date">${data.latest_album.release_date}</p>
-                </div>
-            </div>
-            <h4 style="margin: 20px 0 10px 0; color: #666;">Tracks</h4>
-            <ul class="track-list">
-                ${data.latest_album.tracks.map(track =>
-                    `<li>${track.name} <span style="color: #999;">(${track.duration})</span></li>`
-                ).join('')}
-            </ul>
-        `;
+        <div class="stat-row"><span class="stat-label">Popularity</span>
+          <span class="stat-value">${rand.popularity}/100</span>
+        </div>
 
-        // Display Popular Artists
-        const popularArtists = document.getElementById('popularArtists');
-        popularArtists.innerHTML = data.popular_artists.map(artist =>
-            `<span class="artist-tag">${artist}</span>`
-        ).join('');
+        <h4>Top Tracks</h4>
+        <ul class="track-list">${rand.top_tracks
+          .map((t) => `<li>${t}</li>`)
+          .join("")}</ul>
+    `;
+  }
 
-        // Display Random Artist
-        const randomArtist = document.getElementById('randomArtist');
-        if (data.random_artist) {
-            randomArtist.innerHTML = `
-                ${data.random_artist.image ? `
-                    <img src="${data.random_artist.image}" alt="${data.random_artist.name}" class="artist-image" style="margin-bottom: 20px;">
-                ` : ''}
-                <h3 style="margin-bottom: 20px;">${data.random_artist.name}</h3>
-                <div class="stat-row">
-                    <span class="stat-label">Followers</span>
-                    <span class="stat-value">${formatNumber(data.random_artist.followers)}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Popularity</span>
-                    <span class="stat-value">${data.random_artist.popularity}/100</span>
-                </div>
-                <h4 style="margin: 20px 0 10px 0; color: #666; text-align: left;">Top Tracks</h4>
-                <ul class="track-list">
-                    ${data.random_artist.top_tracks.map(track => `<li>${track}</li>`).join('')}
-                </ul>
-            `;
-        } else {
-            randomArtist.innerHTML = '<p>No random artist available</p>';
-        }
-    }
+  // --------------------------------------------
+  // HELPERS
+  // --------------------------------------------
+  function formatNumber(num) {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
 
-    function formatNumber(num) {
-        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    }
+  function showCredentialsSection() {
+    credentialsSection.style.display = "flex";
+    resultsSection.style.display = "none";
+    errorSection.style.display = "none";
+  }
 
-    function showCredentialsSection() {
-        credentialsSection.style.display = 'flex';
-        resultsSection.style.display = 'none';
-        errorSection.style.display = 'none';
-    }
+  function showResultsSection() {
+    credentialsSection.style.display = "none";
+    resultsSection.style.display = "block";
+    errorSection.style.display = "none";
+  }
 
-    function showResultsSection() {
-        credentialsSection.style.display = 'none';
-        resultsSection.style.display = 'block';
-        errorSection.style.display = 'none';
-    }
-
-    function showError(message) {
-        credentialsSection.style.display = 'none';
-        resultsSection.style.display = 'none';
-        errorSection.style.display = 'flex';
-        document.getElementById('errorMessage').textContent = message;
-    }
+  function showError(message) {
+    credentialsSection.style.display = "none";
+    resultsSection.style.display = "none";
+    errorSection.style.display = "flex";
+    document.getElementById("errorMessage").textContent = message;
+  }
 });
